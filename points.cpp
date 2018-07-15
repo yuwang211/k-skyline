@@ -6,11 +6,12 @@ Points::Points()
 	unused = 0;
 	np = 0;
 	rp = 0;
+	mp = 0;
 }
 
 Points::~Points()
 {
-	free(t);
+	if (!t) free(t);
 }
 
 int Points::insert(int x, int y, int cnt)
@@ -49,8 +50,15 @@ inline Points::Point& Points::operator[] (int id)
 
 void Points::remove(int id)
 {
-	t[id].next = unused;
-	unused = id;
+	if (t[id].next == -1)
+	{
+		t[id].next = mp;
+		mp = id;
+	}
+	else
+	{
+		printf("ERROR\n");
+	}
 }
 
 inline void Points::setSite(int id, int s)
@@ -66,6 +74,7 @@ inline void Points::init(int id)
 
 inline int Points::assign(int id)
 {
+	printf("Assign %d, %d,%d\n", t[id].x, t[id].y, t[id].cntps);
 	t[id].cnt -= t[id].cntps;
 	--t[id].site;
 	return t[id].cntps;
@@ -81,7 +90,7 @@ inline int Points::getnp()
 	if (np == 0) return 0;
 	int ret = np;
 	np = t[np].next;
-	t[ret].next = 0;
+	t[ret].next = -1;
 	return ret;
 }
 
@@ -90,12 +99,23 @@ inline int Points::getrp()
 	if (rp == 0) return 0;
 	int ret = rp;
 	rp = t[rp].next;
-	t[ret].next = 0;
+	t[ret].next = -1;
+	return ret;
+}
+
+inline int Points::getmp()
+{
+	if (mp == 0) return 0;
+	int ret = mp;
+	mp = t[mp].next;
+	t[ret].next = unused;
+	unused = ret;
 	return ret;
 }
 
 inline int Points::report(int id, int val)
 {
+	printf("Report %d, %d,%d\n", t[id].x, t[id].y, val);
 	if (t[id].site > 0)
 	{
 		--t[id].site;
@@ -104,8 +124,8 @@ inline int Points::report(int id, int val)
 	}
 	else
 	{
-		t[id].cnt += 0;
-		if (t[id].next == 0)
+		t[id].cnt += val;
+		if (t[id].next == -1)
 		{
 			t[id].next = rp;
 			rp = id;

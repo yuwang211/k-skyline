@@ -15,11 +15,15 @@ class StaticSkyline{
 		StaticSkyline();
 		~StaticSkyline();
 		
+		bool enable();
+		
 		void build(Points *p);
 		
-		void destroy();
+		int destroy();
 		
 		int count(int x, int y);
+		
+		void add(int x, int y);
 		
 		int n;
 		int n_sgt;
@@ -30,6 +34,7 @@ class StaticSkyline{
 	
 		struct Node{
 			//struct
+			int l, r;
 			int key, id, ena, size;
 			//tracking
 			int val, min, delta;
@@ -47,20 +52,22 @@ class StaticSkyline{
 		Node *bst;
 		
 		int getRank(int x);
+		int getPreRank(int x);
 		
-		int bst_mid(int l, int r);
 		void bst_add(int p, int d);
-		void bst_down(int l, int r);
+		void bst_down(int p);
+		void bst_up(int p);
 		
 		int bst_build(int l, int r);
-		void bst_destroy(int l, int r, int d = 0);
+		int bst_destroy(int p);
 		
-		void bst_change(int l, int r, int lk, int rk, int d);
-		int bst_count(int l, int r, int lk, int rk);
-		void bst_scanNegative(int l, int r);
+		void bst_change(int p, int lk, int rk, int d);
+		int bst_count(int p, int lk, int rk);
+		void bst_scanNegative(int p);
 		
-		void bst_collect(int l, int r, int key, int id);
-		void bst_assign(int l, int r, int key, int id);
+		void bst_collect(int p, int key, int id);
+		void bst_assign(int p, int key, int id);
+		void bst_remove(int p, int key, int id);
 		
 		
 		//tools

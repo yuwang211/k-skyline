@@ -11,9 +11,14 @@ StaticSkyline::~StaticSkyline()
 {
 	if (!key) free(key);
 	if (!sgt) free(sgt);
-	if (!bst) free(bst);
+	delete[] bst;
+	//if (!bst) free(bst);
 }
 
+bool StaticSkyline::enable()
+{
+	return key != NULL;
+}
 
 void StaticSkyline::build(Points *p)
 {
@@ -54,10 +59,13 @@ void StaticSkyline::build(Points *p)
 		
 	//build bst
 	
-	bst = (Node *)malloc(sizeof(bst) * (sgt[n_sgt] + 3));
+	//bst = (Node *)malloc(sizeof(bst) * (sgt[n_sgt] + 3));
+	bst = new Node[sgt[n_sgt] + 3];
 	bst[0].ena = 0;
 	bst[0].size = 0;
 	bst[0].min = INF;
+	bst[0].l = 0;
+	bst[0].r = 0;
 	
 	for (int i = pts->getnp(); i != 0; i = pts->getnp())
 	{
@@ -75,33 +83,72 @@ void StaticSkyline::build(Points *p)
 		sgt[i] = sgt[i - 1];
 	sgt[0] = 1;
 	
-	for (int i = 1; i <= n_sgt; ++i)
+	for (int i = n_sgt; i >= 1; --i)
 	{
 		std::sort(bst + sgt[i - 1], bst + sgt[i]);
-		bst_build(sgt[i - 1], sgt[i] - 1);
+		sgt[i] = bst_build(sgt[i - 1], sgt[i] - 1);
 	}	
 }
 
-void StaticSkyline::destroy()
+int StaticSkyline::destroy()
 {
+	int ret = 0;
 	for (int i = 1; i <= n_sgt; ++i)
-		bst_destroy(sgt[i - 1], sgt[i] - 1);
+		ret += bst_destroy(sgt[i]);
 		
 	free(key); key = NULL;
 	free(sgt); sgt = NULL;
-	free(bst); bst = NULL;
+	delete[] bst; bst = NULL;
+	//free(bst); bst = NULL;
+	return ret;
 }
 
 int StaticSkyline::count(int x, int y)
 {
 	int ret = 0;
-	for (int i = getRank(x); i <= n_sgt; i += lowbit(i))
-		ret += bst_count(sgt[i - 1], sgt[i] - 1, y, INF);
+	for (int i = 1; i <= n_sgt; i += lowbit(i))
+	{
+		ret += bst_count(sgt[i], y, INF);
+	}
+	for (int i = getRank(x) + 1; i <= n_sgt; i += lowbit(i))
+	{
+		ret -= bst_count(sgt[i], y, INF);
+	}
 	return ret;
+}
+
+void StaticSkyline::add(int x, int y)
+{
+	for (int i = getPreRank(x) + 1; i <= n_sgt; i += lowbit(i))
+	{
+		bst_change(sgt[i], -INF, y, -1);
+		bst_scanNegative(sgt[i]);
+	}
+	
+	for (int i = pts->getrp(); i != 0; i = pts->getrp())
+	{
+		for (int j = getRank(pts->t[i].x); j != 0; j -= lowbit(j))
+			bst_collect(sgt[j], pts->t[i].y, i);
+		printf("(%d, %d): %d\n", pts->t[i].x, pts->t[i].y, pts->t[i].cnt);
+		if (pts->t[i].cnt < 0)
+		{
+			//printf("Point (%d, %d) is removed from the k-skyline\n", pts->t[i].x, pts->t[i].y);
+			for (int j = getRank(pts->t[i].x); j != 0; j -= lowbit(j))
+				bst_remove(sgt[j], pts->t[i].y, i);
+			pts->remove(i);
+		}
+		else
+		{
+			pts->init(i);
+			for (int j = getRank(pts->t[i].x); j != 0; j -= lowbit(j))
+				bst_assign(sgt[j], pts->t[i].y, i);
+		}
+	}
 }
 
 inline int StaticSkyline::getRank(int x)
 {
+	x = -x;
 	int rx = 0;
 	for (int i = n_sgt; i > 0; i = (i >> 1))
 		while (rx + i <= n_sgt && key[rx + i] <= x)
@@ -109,193 +156,177 @@ inline int StaticSkyline::getRank(int x)
 	return rx;
 }
 
-inline int StaticSkyline::bst_mid(int l, int r)
+inline int StaticSkyline::getPreRank(int x)
 {
-	if (l > r) return 0;
-	else return ((l + r) >> 1);
+	x = -x;
+	int rx = 0;
+	for (int i = n_sgt; i > 0; i = (i >> 1))
+		while (rx + i <= n_sgt && key[rx + i] < x)
+			rx += i;
+	return rx;
 }
+
 
 inline void StaticSkyline::bst_add(int p, int d)
 {
-	if (p == 0) return;
 	bst[p].val += d;
 	bst[p].min += d;
 	bst[p].delta += d;
 }
 
-inline void StaticSkyline::bst_down(int l, int r)
+inline void StaticSkyline::bst_down(int p)
 {
-	if (l > r) return;
-	int mid = ((l + r) >> 1);
-	if (bst[mid].delta != 0)
+	if (bst[p].delta != 0)
 	{
-		if (l < mid) bst_add(((l + mid - 1) >> 1), bst[mid].delta);
-		if (mid < r) bst_add(((mid + 1 + r) >> 1), bst[mid].delta);
-		bst[mid].delta = 0;
+		if (bst[p].l != 0) bst_add(bst[p].l, bst[p].delta);
+		if (bst[p].r != 0) bst_add(bst[p].l, bst[p].delta);
+		bst[p].delta = 0;
 	}
+}
+
+inline void StaticSkyline::bst_up(int p)
+{
+	bst[p].size = bst[bst[p].l].size + bst[bst[p].r].size + bst[p].ena;
+	bst[p].min = min(min(bst[bst[p].l].min, bst[bst[p].r].min), bst[p].val);
 }
 
 int StaticSkyline::bst_build(int l, int r)
 {
 	if (l > r) return 0;
 	int mid = ((l + r) >> 1);
-	int lc = bst_build(l, mid - 1);
-	int rc = bst_build(mid + 1, r);
-	bst[mid].size = bst[lc].size + bst[rc].size + 1;
-	bst[mid].min = min(min(bst[lc].size, bst[rc].size), bst[mid].val);
+	bst[mid].l = bst_build(l, mid - 1);
+	bst[mid].r = bst_build(mid + 1, r);
+	bst_up(mid);
+	return mid;
 }
 
-void StaticSkyline::bst_destroy(int l, int r, int d)
+int StaticSkyline::bst_destroy(int p)
 {
-	if (l > r) return;
-	int mid = ((l + r) >> 1);
-	if (bst[mid].ena)
+	int ret = 0;
+	if (p == 0) return 0;
+	bst_down(p);
+	if (bst[p].ena)
 	{
-		pts->collect(bst[mid].id, bst[mid].val + d);
-		if (pts->t[bst[mid].id].next != -1)
+		pts->collect(bst[p].id, bst[p].val);
+		if (pts->t[bst[p].id].next != -1)
 		{
-			pts->t[bst[mid].id].next = pts->np;
-			pts->np = bst[mid].id;
+			++ret;
+			pts->t[bst[p].id].next = pts->np;
+			pts->np = bst[p].id;
 		}
 	}
-	d += bst[mid].delta;
-	bst_destroy(l, mid - 1, d);
-	bst_destroy(mid + 1, r, d);
+	ret += bst_destroy(bst[p].l);
+	ret += bst_destroy(bst[p].r);
+	return ret;
 }
 
-void StaticSkyline::bst_change(int l, int r, int lk, int rk, int d)
+void StaticSkyline::bst_change(int p, int lk, int rk, int d)
 {
-	if (l > r) return;
-	int mid = ((l + r) >> 1);
+	if (p == 0) return;
 	if (lk == -INF && rk == INF)
 	{
-		bst_add(mid, d);
+		bst_add(p, d);
 		return;
 	}
-	if (bst[mid].delta != 0)
-	{
-		if (l < mid) bst_add(((l + mid - 1) >> 1), bst[mid].delta);
-		if (mid < r) bst_add(((mid + 1 + r) >> 1), bst[mid].delta);
-		bst[mid].delta = 0;
-	}
+	bst_down(p);
 	
-	if (lk <= bst[mid].key && bst[mid].key <= rk)
+	if (lk <= bst[p].key && bst[p].key <= rk)
 	{
-		bst[mid].val += d;
-		bst_change(l, mid - 1, lk, INF, d);
-		bst_change(mid + 1, r, -INF, rk, d);
+		bst[p].val += d;
+		bst_change(bst[p].l, lk, INF, d);
+		bst_change(bst[p].r, -INF, rk, d);
 	}
-	else if (rk < bst[mid].key)
-		bst_change(l, mid - 1, lk, rk, d);
+	else if (rk < bst[p].key)
+		bst_change(bst[p].l, lk, rk, d);
 	else
-		bst_change(mid + 1, r, lk, rk, d);
-		
-	int lc = bst_mid(l, mid - 1);
-	int rc = bst_mid(mid + 1, r);
-	bst[mid].size = bst[lc].size + bst[rc].size + 1;
-	bst[mid].min = min(min(bst[lc].size, bst[rc].size), bst[mid].val);
+		bst_change(bst[p].r, lk, rk, d);
+	
+	bst_up(p);
 }
 
-int StaticSkyline::bst_count(int l, int r, int lk, int rk)
+int StaticSkyline::bst_count(int p, int lk, int rk)
 {
-	if (l > r) return 0;
-	
-	int mid = ((l + r) >> 1);
+	if (p == 0) return 0;
 	if (lk == -INF && rk == INF)
 	{
-		return bst[mid].size;
+		return bst[p].size;
 	}
-	else if (lk <= bst[mid].key && bst[mid].key <= rk)
+	else if (lk <= bst[p].key && bst[p].key <= rk)
 	{
-		return bst[mid].ena + bst_count(l, mid - 1, lk, INF) + bst_count(mid + 1, r, -INF, rk);
+		return bst[p].ena + bst_count(bst[p].l, lk, INF) + bst_count(bst[p].r, -INF, rk);
 	}
-	else if (rk < bst[mid].key)
-		return bst_count(l, mid - 1, lk, rk);
+	else if (rk < bst[p].key)
+		return bst_count(bst[p].l, lk, rk);
 	else
-		return bst_count(mid + 1, r, lk, rk);
-		
+		return bst_count(bst[p].r, lk, rk);
 }
 
-void StaticSkyline::bst_scanNegative(int l, int r)
+void StaticSkyline::bst_scanNegative(int p)
 {
-	if (l > r) return;
-	int mid = ((l + r) >> 1);
-	if (bst[mid].delta != 0)
-	{
-		if (l < mid) bst_add(((l + mid - 1) >> 1), bst[mid].delta);
-		if (mid < r) bst_add(((mid + 1 + r) >> 1), bst[mid].delta);
-		bst[mid].delta = 0;
-	}
-	
-	if (bst[mid].val < 0)
-		bst[mid].val = pts->report(bst[mid].id, bst[mid].val);
-		
-	int lc = bst_mid(l, mid - 1);
-	int rc = bst_mid(mid + 1, r);
-	if (bst[lc].min < 0) bst_scanNegative(l, mid - 1);
-	if (bst[rc].min < 0) bst_scanNegative(mid + 1, r);
-	
-	bst[mid].size = bst[lc].size + bst[rc].size + 1;
-	bst[mid].min = min(min(bst[lc].size, bst[rc].size), bst[mid].val);
+	if (p == 0) return;
+	bst_down(p);
+	if (bst[p].val < 0)
+		bst[p].val = pts->report(bst[p].id, bst[p].val);
+	if (bst[bst[p].l].min < 0) bst_scanNegative(bst[p].l);
+	if (bst[bst[p].r].min < 0) bst_scanNegative(bst[p].r);
+	bst_up(p);
 }
 
-void StaticSkyline::bst_collect(int l, int r, int key, int id)
+void StaticSkyline::bst_collect(int p, int key, int id)
 {
-	int mid = ((l + r) >> 1);
-	
-	if (key == bst[mid].key && id == bst[mid].id)
+	if (key == bst[p].key && id == bst[p].id)
 	{
-		pts->collect(bst[mid].id, bst[mid].val);
+		pts->collect(bst[p].id, bst[p].val);
 		return;
 	}
-	
-	if (bst[mid].delta != 0)
+	bst_down(p);
+	if (key < bst[p].key || (key == bst[p].key && id < bst[p].id))
 	{
-		if (l < mid) bst_add(((l + mid - 1) >> 1), bst[mid].delta);
-		if (mid < r) bst_add(((mid + 1 + r) >> 1), bst[mid].delta);
-		bst[mid].delta = 0;
-	}
-	
-	if (key < bst[mid].key || (key == bst[mid].key && id < bst[mid].id))
-	{
-		bst_collect(l, mid - 1, key, id);
+		bst_collect(bst[p].l, key, id);
 	}
 	else
 	{
-		bst_collect(mid + 1, r, key, id);
+		bst_collect(bst[p].r, key, id);
 	}
 }
 
-void StaticSkyline::bst_assign(int l, int r, int key, int id)
+void StaticSkyline::bst_assign(int p, int key, int id)
 {
-	int mid = ((l + r) >> 1);
-	
-	if (key == bst[mid].key && id == bst[mid].id)
+	if (key == bst[p].key && id == bst[p].id)
 	{
-		bst[mid].val = pts->assign(bst[mid].id);
+		bst[p].val = pts->assign(bst[p].id);
 		return;
 	}
-	
-	if (bst[mid].delta != 0)
+	bst_down(p);
+	if (key < bst[p].key || (key == bst[p].key && id < bst[p].id))
 	{
-		if (l < mid) bst_add(((l + mid - 1) >> 1), bst[mid].delta);
-		if (mid < r) bst_add(((mid + 1 + r) >> 1), bst[mid].delta);
-		bst[mid].delta = 0;
-	}
-	
-	if (key < bst[mid].key || (key == bst[mid].key && id < bst[mid].id))
-	{
-		bst_assign(l, mid - 1, key, id);
+		bst_assign(bst[p].l, key, id);
 	}
 	else
 	{
-		bst_assign(mid + 1, r, key, id);
+		bst_assign(bst[p].r, key, id);
 	}
-	
-	int lc = bst_mid(l, mid - 1);
-	int rc = bst_mid(mid + 1, r);
-	bst[mid].size = bst[lc].size + bst[rc].size + 1;
-	bst[mid].min = min(min(bst[lc].size, bst[rc].size), bst[mid].val);
+	bst_up(p);
+}
+
+void StaticSkyline::bst_remove(int p, int key, int id)
+{
+	if (key == bst[p].key && id == bst[p].id)
+	{
+		bst[p].val = INF;
+		bst[p].ena = 0;
+		return;
+	}
+	bst_down(p);
+	if (key < bst[p].key || (key == bst[p].key && id < bst[p].id))
+	{
+		bst_remove(bst[p].l, key, id);
+	}
+	else
+	{
+		bst_remove(bst[p].r, key, id);
+	}
+	bst_up(p);
 }
 
 

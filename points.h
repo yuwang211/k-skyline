@@ -8,7 +8,7 @@
 class Points{
 	public:
 		
-		static constexpr int LEN_INIT = 10;
+		static constexpr int LEN_INIT = 20;
 		
 		struct Point{
 			//coordinates
@@ -40,9 +40,11 @@ class Points{
 		
 		int getrp();
 		
+		int getmp();
+		
 		int report(int id, int val);
 		
-		int np, rp;
+		int np, rp, mp;
 		
 		Point *t;
 		
